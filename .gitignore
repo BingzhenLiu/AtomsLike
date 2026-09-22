@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+coverage/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local/editor files
+.DS_Store
+*.log
+
+# Confidential challenge material and local agent handoff
+AGENTS.md
+.workbuddy/
+docs/internal/
+
+# TypeScript incremental cache
+*.tsbuildinfo
