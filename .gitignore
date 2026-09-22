@@ -59,3 +59,10 @@ test-results/
 pnpm-lock.yaml
 *.pyc
 __pycache__
+
+# Private handoff materials and user uploads never enter the public repository.
+uploads/
+AGENTS.md
+docs/internal/
+.workbuddy/
+handoff/

@@ -1,0 +1,277 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --canvas: #07101d;
+    --canvas-soft: #0a1422;
+    --panel: #0d1828;
+    --panel-raised: #111f32;
+    --panel-quiet: #0a1524;
+    --line: #22324a;
+    --line-strong: #30425e;
+    --text: #eef4ff;
+    --text-soft: #becbe0;
+    --dim: #8496b1;
+    --accent: #8da2ff;
+    --accent-strong: #7089ff;
+    --accent-soft: rgba(141, 162, 255, 0.14);
+    --success: #52d6a1;
+    --danger: #ff7b8d;
+    --warning: #f2be6d;
+
+    --background: 216 61% 7%;
+    --foreground: 216 100% 97%;
+    --card: 213 51% 10%;
+    --card-foreground: 216 100% 97%;
+    --popover: 213 51% 10%;
+    --popover-foreground: 216 100% 97%;
+    --primary: 229 100% 78%;
+    --primary-foreground: 216 61% 7%;
+    --secondary: 214 43% 15%;
+    --secondary-foreground: 216 100% 97%;
+    --muted: 214 43% 15%;
+    --muted-foreground: 214 22% 61%;
+    --accent-ui: 229 100% 78%;
+    --accent-ui-foreground: 216 61% 7%;
+    --destructive: 352 100% 74%;
+    --destructive-foreground: 216 61% 7%;
+    --border: 216 37% 21%;
+    --input: 216 37% 21%;
+    --ring: 229 100% 78%;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--text);
+    font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .af-shell {
+    background-color: var(--canvas);
+    background-image:
+      radial-gradient(120% 80% at 78% -10%, rgba(141, 162, 255, 0.12), transparent 60%),
+      linear-gradient(180deg, var(--canvas-soft), var(--canvas) 55%);
+  }
+
+  .af-grid {
+    background-image:
+      linear-gradient(to right, rgba(141, 162, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(141, 162, 255, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .af-panel {
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+
+  .af-panel-quiet {
+    background-color: var(--panel-quiet);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+
+  .af-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  .af-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      transform 160ms ease;
+    min-height: 36px;
+  }
+
+  .af-btn-primary {
+    background-color: var(--accent);
+    color: #08111f;
+  }
+
+  .af-btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-strong);
+    transform: translateY(-1px);
+  }
+
+  .af-btn-ghost {
+    background-color: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-soft);
+  }
+
+  .af-btn-ghost:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .af-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .af-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    color: var(--text-soft);
+    background-color: transparent;
+    transition:
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .af-icon-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .af-input {
+    width: 100%;
+    background-color: var(--panel-quiet);
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    color: var(--text);
+    padding: 12px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: none;
+  }
+
+  .af-input::placeholder {
+    color: var(--dim);
+  }
+
+  .af-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background-color: var(--panel-raised);
+    color: var(--text-soft);
+    padding: 5px 10px;
+    font-size: 11px;
+    transition:
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .af-chip:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .af-scroll {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  .af-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .af-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--line-strong);
+    border-radius: 999px;
+  }
+
+  .af-pulse {
+    animation: af-pulse 1.6s ease-in-out infinite;
+  }
+
+  .af-spin {
+    animation: af-spin 1s linear infinite;
+  }
+
+  .af-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      rgba(141, 162, 255, 0) 0%,
+      rgba(141, 162, 255, 0.55) 50%,
+      rgba(141, 162, 255, 0) 100%
+    );
+    background-size: 200% 100%;
+    animation: af-shimmer 1.8s linear infinite;
+  }
+}
+
+@keyframes af-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(141, 162, 255, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(141, 162, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(141, 162, 255, 0);
+  }
+}
+
+@keyframes af-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes af-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
