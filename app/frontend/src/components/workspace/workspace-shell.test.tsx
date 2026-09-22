@@ -14,6 +14,17 @@ const runtime = vi.hoisted(() => ({
 
 vi.mock("@/lib/ai/runtime", () => runtime);
 
+// Unauthenticated sessions fall back to local storage, so the lock never engages here.
+vi.mock("@/lib/api", () => ({
+  client: {
+    auth: {
+      me: vi.fn().mockRejectedValue(new Error("anonymous")),
+      toLogin: vi.fn(),
+    },
+    apiCall: { invoke: vi.fn().mockResolvedValue({ data: {} }) },
+  },
+}));
+
 const PLAN_JSON =
   '{"title":"记账小工具","goal":"记录每天的收入与支出","features":["新增记录","显示结余"]}';
 const HTML_JSON =

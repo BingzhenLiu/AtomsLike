@@ -1,0 +1,30 @@
+{
+    "title": "forge_session_locks",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "autoincrement primary key"
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "session_token": {
+            "type": "string"
+        },
+        "device_label": {
+            "type": "string"
+        },
+        "heartbeat_at": {
+            "type": "string",
+            "description": "ISO8601 heartbeat timestamp"
+        },
+        "released": {
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "user_id",
+        "session_token"
+    ]
+}

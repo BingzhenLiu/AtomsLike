@@ -20,6 +20,10 @@ last_updated: 2026-09-22T08:05:34Z
 | T7 | 前端校验：lint + TypeScript + test + Vite build | Alex | done | T3,T5,T6 |
 | T8 | 更新 README 与迁移说明 | Alex | done | T7 |
 | T9 | 提交源码至 GitHub 仓库并给出部署链接 | Alex | done | T8 |
+| T10 | 账号级云端历史同步（forge_workspaces / forge_versions） | Alex | done | T9 |
+| T11 | 单账号会话锁：心跳、冲突只读、接管、释放 | Alex | done | T10 |
+| T12 | 锁状态 UI、同步状态标签与登录入口 | Alex | done | T11 |
+| T13 | 回归验证：lint + typecheck + test + build + UI 检查 | Alex | done | T12 |
 
 ## Progress Log
 - 2026-09-22 工作台组件全部落地：prompt-composer、preview-frame、code-view、version-history、result-panel、workspace-shell。

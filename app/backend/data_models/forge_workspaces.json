@@ -1,0 +1,38 @@
+{
+    "title": "forge_workspaces",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "autoincrement primary key"
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "title": {
+            "type": "string"
+        },
+        "prompt": {
+            "type": "string"
+        },
+        "mode": {
+            "type": "string"
+        },
+        "plan_json": {
+            "type": "string"
+        },
+        "pending_revision": {
+            "type": "string"
+        },
+        "active_version_id": {
+            "type": "integer"
+        },
+        "version_count": {
+            "type": "integer"
+        }
+    },
+    "required": [
+        "user_id",
+        "title"
+    ]
+}

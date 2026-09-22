@@ -1,0 +1,37 @@
+{
+    "title": "forge_versions",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "autoincrement primary key"
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "workspace_id": {
+            "type": "integer"
+        },
+        "version_index": {
+            "type": "integer"
+        },
+        "html": {
+            "type": "string"
+        },
+        "summary": {
+            "type": "string"
+        },
+        "prompt": {
+            "type": "string"
+        },
+        "revision_prompt": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "user_id",
+        "workspace_id",
+        "version_index",
+        "html"
+    ]
+}

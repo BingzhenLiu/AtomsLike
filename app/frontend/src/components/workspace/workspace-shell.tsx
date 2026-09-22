@@ -15,9 +15,19 @@ type Tab = "chat" | "result";
 
 export function WorkspaceShell() {
   const workspace = useWorkspace();
-  const { state, hydrated, busy, activeVersion } = workspace;
+  const { state, hydrated, busy, activeVersion, auth, lockStatus, lockHolder, syncStatus, readOnly } =
+    workspace;
   const [tab, setTab] = useState<Tab>("chat");
   const stages = selectStages(state);
+
+  const syncLabel =
+    auth !== "authenticated"
+      ? "本地存储"
+      : syncStatus === "syncing"
+        ? "同步中…"
+        : syncStatus === "error"
+          ? "同步失败"
+          : "已同步云端";
 
   const showAuthHint = Boolean(state.planError) && state.mode === "live";
 
@@ -42,6 +52,17 @@ export function WorkspaceShell() {
           </div>
 
           <div className="flex items-center gap-2">
+            <span
+              className="hidden rounded-md border border-[var(--line-strong)] px-2 py-1 text-[10px] text-[var(--dim)] sm:inline"
+              title={auth === "authenticated" ? "历史记录保存在你的账号下" : "未登录时历史仅保存在本机浏览器"}
+            >
+              {syncLabel}
+            </span>
+            {auth === "anonymous" && (
+              <button type="button" className="af-icon-btn px-2 text-[11px]" onClick={workspace.login}>
+                登录同步
+              </button>
+            )}
             <div
               className="flex overflow-hidden rounded-lg border border-[var(--line-strong)]"
               role="group"
@@ -123,6 +144,27 @@ export function WorkspaceShell() {
             </div>
 
             <div className="af-scroll flex max-h-[46vh] shrink-0 flex-col gap-3 overflow-y-auto pr-1">
+              {readOnly && (
+                <div className="flex items-start gap-2 rounded-xl border border-[var(--warning)] bg-[rgba(242,190,109,.1)] px-3 py-2.5">
+                  <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[var(--warning)]" aria-hidden />
+                  <div className="flex-1">
+                    <p className="text-[11px] leading-5 text-[var(--text-soft)]">
+                      {lockStatus === "evicted"
+                        ? `该账号已在「${lockHolder || "另一台设备"}」上接管编辑，本窗口已转为只读。`
+                        : `该账号正在「${lockHolder || "另一台设备"}」上编辑，同一时间只允许一个会话写入。`}
+                      历史记录仍可查看。
+                    </p>
+                    <button
+                      type="button"
+                      className="mt-2 rounded-md bg-[var(--accent)] px-2.5 py-1 text-[11px] font-semibold text-[#08111f]"
+                      onClick={() => void workspace.takeOver()}
+                    >
+                      在本设备接管编辑
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {showAuthHint && (
                 <div className="flex items-start gap-2 rounded-xl border border-[var(--warning)] bg-[rgba(242,190,109,.1)] px-3 py-2.5">
                   <AlertTriangle className="mt-[2px] h-3.5 w-3.5 shrink-0 text-[var(--warning)]" aria-hidden />
