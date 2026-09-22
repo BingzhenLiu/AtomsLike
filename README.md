@@ -3,7 +3,7 @@
 一句话生成可交互网页应用、对话式修改、版本保存与恢复的 AI 生成工作台。本仓库是 AtomForge 迁移到 **Atoms 平台** 后的实现，模型推理统一走 **Atoms AIHub**。
 
 - 源码仓库：https://github.com/BingzhenLiu/AtomsLike
-- 在线体验：在 Atoms App Viewer 中点击 Publish 生成公开链接后，将其替换到此处。
+- 在线体验：https://0kwcig.pub.atoms.world
 
 ## 它解决什么问题
 
