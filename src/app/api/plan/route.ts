@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
+import { runPlanAgent } from "@/lib/ai/agent/plan";
 import { isAgentConfigured } from "@/lib/ai/agent/runtime";
-import { runBuildAgent } from "@/lib/ai/agent/run";
 import { toErrorPayload } from "@/lib/ai/build-error";
 import type { StageReporter } from "@/lib/ai/build-stream";
-import { generateRequestSchema } from "@/lib/ai/contract";
-import { runDemoBuild } from "@/lib/ai/demo-generator";
+import { planRequestSchema } from "@/lib/ai/contract";
+import { runDemoPlan } from "@/lib/ai/demo-generator";
 import { respondWithBuildEvents, wantsEventStream } from "@/lib/ai/stream-response";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -21,10 +21,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = generateRequestSchema.safeParse(body);
+  const parsed = planRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: { code: "REQUEST_INVALID", message: "请输入 1–4000 字的需求；当前应用代码也必须在大小限制内。" } },
+      { error: { code: "REQUEST_INVALID", message: "请输入 1–4000 字的需求；补充说明最多 1000 字。" } },
       { status: 400 },
     );
   }
@@ -32,10 +32,10 @@ export async function POST(request: Request) {
   return respondWithBuildEvents(async (emit) => {
     const report: StageReporter = (stage, status) => emit({ type: "stage", stage, status });
     try {
-      const result = isAgentConfigured()
-        ? await runBuildAgent(parsed.data, report)
-        : await runDemoBuild(parsed.data, report);
-      emit({ type: "result", result });
+      const plan = isAgentConfigured()
+        ? await runPlanAgent(parsed.data, report)
+        : await runDemoPlan(parsed.data, report);
+      emit({ type: "plan", plan });
     } catch (error) {
       emit({ type: "error", error: toErrorPayload(error) });
     }

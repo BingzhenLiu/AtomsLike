@@ -13,6 +13,18 @@ const messageSchema = z.object({
   buildId: z.string().optional(),
 });
 
+const planSchema = z.object({
+  id: z.string(),
+  prompt: z.string(),
+  goal: z.string(),
+  coreFeatures: z.array(z.string()),
+  nonGoals: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  openQuestions: z.array(z.string()),
+  revision: z.number(),
+  createdAt: z.string(),
+});
+
 const versionSchema = z.object({
   id: z.string(),
   buildId: z.string(),
@@ -21,10 +33,30 @@ const versionSchema = z.object({
   html: z.string(),
   createdAt: z.string(),
   mode: z.enum(["live", "demo"]),
+  planId: z.string().nullable(),
+});
+
+const projectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  messages: z.array(messageSchema),
+  versions: z.array(versionSchema),
+  currentVersionId: z.string().nullable(),
+  pendingPlan: planSchema.nullable(),
+  approvedPlan: planSchema.nullable(),
 });
 
 const workspaceSchema = z.object({
   schemaVersion: z.literal(WORKSPACE_SCHEMA_VERSION),
+  project: projectSchema.nullable(),
+});
+
+/** Shape written before the approval gate existed; only read, never written back. */
+const versionSchemaV1 = versionSchema.omit({ planId: true });
+const workspaceSchemaV1 = z.object({
+  schemaVersion: z.literal(1),
   project: z
     .object({
       id: z.string(),
@@ -32,11 +64,25 @@ const workspaceSchema = z.object({
       createdAt: z.string(),
       updatedAt: z.string(),
       messages: z.array(messageSchema),
-      versions: z.array(versionSchema),
+      versions: z.array(versionSchemaV1),
       currentVersionId: z.string().nullable(),
     })
     .nullable(),
 });
+
+function migrateFromV1(workspace: z.infer<typeof workspaceSchemaV1>): PersistedWorkspace {
+  return {
+    schemaVersion: WORKSPACE_SCHEMA_VERSION,
+    project: workspace.project
+      ? {
+          ...workspace.project,
+          pendingPlan: null,
+          approvedPlan: null,
+          versions: workspace.project.versions.map((version) => ({ ...version, planId: null })),
+        }
+      : null,
+  };
+}
 
 export class LocalStorageProjectRepository implements ProjectRepository {
   constructor(private readonly storage: Storage) {}
@@ -45,9 +91,15 @@ export class LocalStorageProjectRepository implements ProjectRepository {
     try {
       const raw = this.storage.getItem(STORAGE_KEY);
       if (!raw) return { workspace: EMPTY_WORKSPACE };
-      const parsed = workspaceSchema.safeParse(JSON.parse(raw));
-      if (!parsed.success) throw new Error("Invalid workspace schema");
-      return { workspace: parsed.data as PersistedWorkspace };
+
+      const parsed: unknown = JSON.parse(raw);
+      const current = workspaceSchema.safeParse(parsed);
+      if (current.success) return { workspace: current.data as PersistedWorkspace };
+
+      const legacy = workspaceSchemaV1.safeParse(parsed);
+      if (legacy.success) return { workspace: migrateFromV1(legacy.data) };
+
+      throw new Error("Invalid workspace schema");
     } catch {
       return {
         workspace: EMPTY_WORKSPACE,

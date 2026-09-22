@@ -52,4 +52,45 @@ describe("POST /api/generate", () => {
     expect(await response.json()).toMatchObject({ error: { code: "CONFIG_MISSING" } });
   });
 
+  it("streams stage events before the result when the client accepts an event stream", async () => {
+    delete process.env.AI_API_KEY;
+    delete process.env.AI_MODEL;
+    const response = await POST(new Request("http://localhost/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ prompt: "创建一个个人记账应用" }),
+    }));
+
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const frames = (await response.text()).split("\n\n").filter(Boolean);
+    const events = frames.map((frame) => JSON.parse(frame.replace(/^data: /, "")));
+
+    expect(events.filter((event) => event.type === "stage").map((event) => `${event.stage}:${event.status}`)).toEqual([
+      "designer:active",
+      "designer:completed",
+      "engineer:active",
+      "engineer:completed",
+      "reviewer:active",
+      "reviewer:completed",
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: "result", result: { mode: "demo" } });
+  });
+
+  it("reports unsupported requests as an error event inside the stream", async () => {
+    delete process.env.AI_API_KEY;
+    delete process.env.AI_MODEL;
+    const response = await POST(new Request("http://localhost/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ prompt: "做一个区块链交易所" }),
+    }));
+
+    const events = (await response.text())
+      .split("\n\n")
+      .filter(Boolean)
+      .map((frame) => JSON.parse(frame.replace(/^data: /, "")));
+
+    expect(events.at(-1)).toMatchObject({ type: "error", error: { code: "CONFIG_MISSING" } });
+  });
+
 });

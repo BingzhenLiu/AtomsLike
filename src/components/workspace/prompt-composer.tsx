@@ -3,6 +3,7 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 export function PromptComposer({
   isBuilding,
+  awaitsApproval,
   hasVersion,
   initialValue = "",
   onSubmit,
@@ -10,6 +11,7 @@ export function PromptComposer({
   canRetry,
 }: {
   isBuilding: boolean;
+  awaitsApproval: boolean;
   hasVersion: boolean;
   initialValue?: string;
   onSubmit: (prompt: string) => void;
@@ -60,7 +62,7 @@ export function PromptComposer({
             disabled={isBuilding || !value.trim()}
             className="inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--accent)] px-3.5 text-xs font-bold text-[#07101d] transition hover:bg-[#a7b6ff] disabled:cursor-not-allowed disabled:opacity-35"
           >
-            {isBuilding ? "构建中" : hasVersion ? "应用修改" : "开始构建"}
+            {awaitsApproval ? "等待确认" : isBuilding ? "构建中" : hasVersion ? "应用修改" : "开始构建"}
             <CornerDownLeft size={13} />
           </button>
         </div>

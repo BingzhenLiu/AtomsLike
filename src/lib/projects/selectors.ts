@@ -7,5 +7,9 @@ export function selectCurrentVersion(state: WorkspaceState): AppVersion | null {
 }
 
 export function selectIsBuilding(state: WorkspaceState): boolean {
-  return state.build?.status === "running";
+  return state.build?.status === "running" || state.build?.status === "awaiting_approval";
+}
+
+export function selectAwaitsApproval(state: WorkspaceState): boolean {
+  return state.build?.status === "awaiting_approval";
 }

@@ -26,6 +26,8 @@ describe("LocalStorageProjectRepository", () => {
         messages: [],
         versions: [],
         currentVersionId: null,
+        pendingPlan: null,
+        approvedPlan: null,
       },
     };
 
@@ -40,5 +42,40 @@ describe("LocalStorageProjectRepository", () => {
 
     expect(result.workspace).toEqual(EMPTY_WORKSPACE);
     expect(result.warning?.code).toBe("STORAGE_CORRUPT");
+  });
+
+  it("migrates a workspace written before the approval gate existed", () => {
+    const storage = new MemoryStorage();
+    storage.setItem("atomforge.workspace.v1", JSON.stringify({
+      schemaVersion: 1,
+      project: {
+        id: "project-1",
+        name: "Legacy",
+        createdAt: "2026-09-22T04:00:00.000Z",
+        updatedAt: "2026-09-22T04:00:00.000Z",
+        messages: [],
+        versions: [
+          {
+            id: "version-1",
+            buildId: "build-1",
+            prompt: "Build a tracker",
+            summary: "Created a tracker",
+            html: "<!doctype html><html><head></head><body></body></html>",
+            createdAt: "2026-09-22T04:00:02.000Z",
+            mode: "demo",
+          },
+        ],
+        currentVersionId: "version-1",
+      },
+    }));
+
+    const result = new LocalStorageProjectRepository(storage).load();
+
+    expect(result.warning).toBeUndefined();
+    expect(result.workspace.schemaVersion).toBe(WORKSPACE_SCHEMA_VERSION);
+    expect(result.workspace.project?.pendingPlan).toBeNull();
+    expect(result.workspace.project?.approvedPlan).toBeNull();
+    expect(result.workspace.project?.versions[0].planId).toBeNull();
+    expect(result.workspace.project?.currentVersionId).toBe("version-1");
   });
 });

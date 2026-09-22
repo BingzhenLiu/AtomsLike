@@ -4,6 +4,7 @@ import {
   type AgentStepId,
   type AppError,
   type AppVersion,
+  type BuildPlan,
   type PersistedWorkspace,
   type Project,
   type WorkspaceState,
@@ -12,6 +13,11 @@ import {
 export type WorkspaceAction =
   | { type: "WORKSPACE_HYDRATED"; workspace: PersistedWorkspace; warning?: AppError }
   | { type: "PROMPT_SUBMITTED"; prompt: string; buildId: string; now: string }
+  | { type: "PLAN_REQUESTED"; prompt: string; note?: string; buildId: string; now: string }
+  | { type: "PLAN_READY"; plan: BuildPlan }
+  | { type: "PLAN_APPROVED"; buildId: string; now: string }
+  | { type: "PLAN_DISCARDED" }
+  | { type: "BUILD_RETRIED"; buildId: string; now: string }
   | { type: "BUILD_STEP_CHANGED"; step: AgentStepId }
   | {
       type: "BUILD_SUCCEEDED";
@@ -71,6 +77,44 @@ function createProject(prompt: string, buildId: string, now: string): Project {
     ],
     versions: [],
     currentVersionId: null,
+    pendingPlan: null,
+    approvedPlan: null,
+  };
+}
+
+function appendUserMessage(project: Project, prompt: string, buildId: string, now: string): Project {
+  return {
+    ...project,
+    updatedAt: now,
+    messages: [
+      ...project.messages,
+      { id: crypto.randomUUID(), role: "user", content: prompt, createdAt: now, buildId },
+    ],
+  };
+}
+
+function stepsFrom(activeStep: AgentStepId) {
+  const activeIndex = AGENT_STEPS.findIndex((step) => step.id === activeStep);
+  return AGENT_STEPS.map((step, index) => ({
+    ...step,
+    status: index < activeIndex ? ("completed" as const) : index === activeIndex ? ("active" as const) : ("pending" as const),
+  }));
+}
+
+function createSession(input: {
+  buildId: string;
+  prompt: string;
+  phase: "plan" | "build";
+  now: string;
+  activeStep: AgentStepId;
+}) {
+  return {
+    id: input.buildId,
+    prompt: input.prompt,
+    phase: input.phase,
+    status: "running" as const,
+    startedAt: input.now,
+    steps: stepsFrom(input.activeStep),
   };
 }
 
@@ -86,36 +130,112 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 
     case "PROMPT_SUBMITTED": {
       const project = state.workspace.project
-        ? {
-            ...state.workspace.project,
-            updatedAt: action.now,
-            messages: [
-              ...state.workspace.project.messages,
-              {
-                id: crypto.randomUUID(),
-                role: "user" as const,
-                content: action.prompt,
-                createdAt: action.now,
-                buildId: action.buildId,
-              },
-            ],
-          }
+        ? appendUserMessage(state.workspace.project, action.prompt, action.buildId, action.now)
         : createProject(action.prompt, action.buildId, action.now);
 
       return {
         ...state,
         workspace: { ...state.workspace, project },
-        build: {
-          id: action.buildId,
+        build: createSession({
+          buildId: action.buildId,
           prompt: action.prompt,
-          status: "running",
-          startedAt: action.now,
-          steps: AGENT_STEPS.map((step, index) => ({
-            ...step,
-            status: index === 0 ? "active" : "pending",
-          })),
-        },
+          phase: "build",
+          now: action.now,
+          activeStep: "designer",
+        }),
         lastPrompt: action.prompt,
+        error: null,
+      };
+    }
+
+    case "PLAN_REQUESTED": {
+      const content = action.note?.trim() ? action.note.trim() : action.prompt;
+      const project = state.workspace.project
+        ? appendUserMessage(state.workspace.project, content, action.buildId, action.now)
+        : createProject(action.prompt, action.buildId, action.now);
+
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          project: { ...project, pendingPlan: null },
+        },
+        build: createSession({
+          buildId: action.buildId,
+          prompt: action.prompt,
+          phase: "plan",
+          now: action.now,
+          activeStep: "planner",
+        }),
+        lastPrompt: action.prompt,
+        error: null,
+      };
+    }
+
+    case "PLAN_READY": {
+      if (!state.workspace.project || state.build?.phase !== "plan") return state;
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          project: { ...state.workspace.project, pendingPlan: action.plan },
+        },
+        build: {
+          ...state.build,
+          status: "awaiting_approval",
+          steps: AGENT_STEPS.map((step) =>
+            step.id === "planner" ? { ...step, status: "completed" as const } : { ...step, status: "pending" as const },
+          ),
+        },
+        error: null,
+      };
+    }
+
+    case "PLAN_APPROVED": {
+      const project = state.workspace.project;
+      if (!project?.pendingPlan) return state;
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          project: { ...project, approvedPlan: project.pendingPlan, pendingPlan: null, updatedAt: action.now },
+        },
+        build: createSession({
+          buildId: action.buildId,
+          prompt: project.pendingPlan.prompt,
+          phase: "build",
+          now: action.now,
+          activeStep: "designer",
+        }),
+        error: null,
+      };
+    }
+
+    case "PLAN_DISCARDED": {
+      if (!state.workspace.project) return { ...state, build: null };
+      return {
+        ...state,
+        workspace: {
+          ...state.workspace,
+          project: { ...state.workspace.project, pendingPlan: null },
+        },
+        build: null,
+        error: null,
+      };
+    }
+
+    case "BUILD_RETRIED": {
+      if (!state.build || state.build.status !== "failed") return state;
+      const phase = state.build.phase;
+      return {
+        ...state,
+        build: createSession({
+          buildId: action.buildId,
+          prompt: state.build.prompt,
+          phase,
+          now: action.now,
+          activeStep: phase === "plan" ? "planner" : "designer",
+        }),
         error: null,
       };
     }
@@ -124,7 +244,15 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return withStepActive(state, action.step);
 
     case "BUILD_SUCCEEDED": {
-      if (!state.workspace.project || state.build?.id !== action.buildId) return state;
+      const session = state.build;
+      if (
+        !state.workspace.project ||
+        session?.id !== action.buildId ||
+        session.status !== "running" ||
+        session.phase !== "build"
+      ) {
+        return state;
+      }
       const version: AppVersion = {
         id: action.versionId,
         buildId: action.buildId,
@@ -133,6 +261,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         html: action.html,
         createdAt: action.now,
         mode: action.mode,
+        planId: state.workspace.project.approvedPlan?.id ?? null,
       };
       return {
         ...state,

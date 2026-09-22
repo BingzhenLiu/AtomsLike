@@ -1,4 +1,4 @@
-export const WORKSPACE_SCHEMA_VERSION = 1 as const;
+export const WORKSPACE_SCHEMA_VERSION = 2 as const;
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -18,6 +18,20 @@ export type AppVersion = {
   html: string;
   createdAt: string;
   mode: "live" | "demo";
+  planId: string | null;
+};
+
+/** A reviewable specification the user approves before anything is built. */
+export type BuildPlan = {
+  id: string;
+  prompt: string;
+  goal: string;
+  coreFeatures: string[];
+  nonGoals: string[];
+  assumptions: string[];
+  openQuestions: string[];
+  revision: number;
+  createdAt: string;
 };
 
 export type Project = {
@@ -28,6 +42,10 @@ export type Project = {
   messages: Message[];
   versions: AppVersion[];
   currentVersionId: string | null;
+  /** Awaiting the user's approval; survives a refresh so the gate can be resumed. */
+  pendingPlan: BuildPlan | null;
+  /** The approved specification the current build or latest version was built from. */
+  approvedPlan: BuildPlan | null;
 };
 
 export type PersistedWorkspace = {
@@ -48,7 +66,9 @@ export type AgentStep = {
 export type BuildSession = {
   id: string;
   prompt: string;
-  status: "running" | "succeeded" | "failed";
+  /** Which half of the two-phase flow this session belongs to. */
+  phase: "plan" | "build";
+  status: "running" | "awaiting_approval" | "succeeded" | "failed";
   steps: AgentStep[];
   startedAt: string;
   error?: AppError;

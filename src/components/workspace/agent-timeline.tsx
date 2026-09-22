@@ -20,6 +20,9 @@ export function AgentTimeline({ build }: { build: BuildSession | null }) {
         {build?.status === "running" && (
           <span className="rounded-full border border-[rgba(141,162,255,.3)] bg-[var(--accent-soft)] px-2.5 py-1 text-[10px] font-bold text-[var(--accent)]">处理中</span>
         )}
+        {build?.status === "awaiting_approval" && (
+          <span className="rounded-full border border-[rgba(242,190,109,.35)] bg-[rgba(242,190,109,.1)] px-2.5 py-1 text-[10px] font-bold text-[var(--warning)]">等待确认</span>
+        )}
       </div>
       <ol className="relative space-y-0 before:absolute before:bottom-4 before:left-[13px] before:top-4 before:w-px before:bg-[var(--line)]">
         {steps.map((step) => {

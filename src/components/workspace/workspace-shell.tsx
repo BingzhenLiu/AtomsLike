@@ -2,14 +2,16 @@
 
 import { AlertTriangle, Boxes, MessageSquareText, PanelRight, X } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef } from "react";
-import { generateResponseSchema } from "@/lib/ai/contract";
+import { createStreamParser } from "@/lib/ai/build-stream";
+import { generateResponseSchema, planResponseSchema } from "@/lib/ai/contract";
 import { LocalStorageProjectRepository } from "@/lib/projects/local-storage";
 import { workspaceReducer, initialWorkspaceState } from "@/lib/projects/reducer";
 import { selectCurrentVersion, selectIsBuilding } from "@/lib/projects/selectors";
-import type { AppError, AppErrorCode } from "@/lib/projects/types";
+import type { AppError, AppErrorCode, BuildPlan } from "@/lib/projects/types";
 import { validateGeneratedHtml } from "@/lib/preview/validate-html";
 import { AgentTimeline } from "./agent-timeline";
 import { ConversationPanel } from "./conversation-panel";
+import { PlanCard } from "./plan-card";
 import { PromptComposer } from "./prompt-composer";
 import { ResultPanel } from "./result-panel";
 import { VersionHistory } from "./version-history";
@@ -25,10 +27,6 @@ const ERROR_CODES = new Set<AppErrorCode>([
   "PREVIEW_REJECTED",
 ]);
 
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
 function parseError(payload: unknown): AppError {
   const candidate = payload as { error?: { code?: unknown; message?: unknown } };
   const code = typeof candidate.error?.code === "string" && ERROR_CODES.has(candidate.error.code as AppErrorCode)
@@ -40,11 +38,41 @@ function parseError(payload: unknown): AppError {
   return { code, message };
 }
 
+type StreamOutcome = { plan: unknown; result: unknown; failure: AppError | null };
+
+/** The five fields the model is allowed to see; ids and bookkeeping stay local. */
+type PlanSpec = {
+  goal: string;
+  coreFeatures: string[];
+  nonGoals: string[];
+  assumptions: string[];
+  openQuestions: string[];
+};
+
+function planSpec(plan: BuildPlan): PlanSpec {
+  return {
+    goal: plan.goal,
+    coreFeatures: plan.coreFeatures,
+    nonGoals: plan.nonGoals,
+    assumptions: plan.assumptions,
+    openQuestions: plan.openQuestions,
+  };
+}
+
+function toAppError(error: unknown): AppError {
+  return typeof error === "object" && error !== null && "code" in error && "message" in error
+    ? (error as AppError)
+    : { code: "PROVIDER_ERROR", message: "生成请求失败。请检查网络后重试，当前版本已保留。" };
+}
+
 export function WorkspaceShell({ initialMode }: { initialMode: "live" | "demo" }) {
   const [state, dispatch] = useReducer(workspaceReducer, initialWorkspaceState);
   const repositoryRef = useRef<LocalStorageProjectRepository | null>(null);
   const currentVersion = useMemo(() => selectCurrentVersion(state), [state]);
   const isBuilding = selectIsBuilding(state);
+  const busy = state.build?.status === "running";
+  const pendingPlan = state.workspace.project?.pendingPlan ?? null;
+  const approvedPlan = state.workspace.project?.approvedPlan ?? null;
 
   useEffect(() => {
     const repository = new LocalStorageProjectRepository(window.localStorage);
@@ -62,41 +90,97 @@ export function WorkspaceShell({ initialMode }: { initialMode: "live" | "demo" }
     return () => window.clearTimeout(timeout);
   }, [state.hydration, state.workspace]);
 
-  async function submitPrompt(prompt: string) {
-    if (isBuilding) return;
-    const buildId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const htmlAtSubmission = currentVersion?.html;
-    dispatch({ type: "PROMPT_SUBMITTED", prompt, buildId, now });
+  async function postStream(url: string, payload: unknown): Promise<StreamOutcome> {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify(payload),
+    });
 
-    try {
-      await delay(180);
-      dispatch({ type: "BUILD_STEP_CHANGED", step: "designer" });
-
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          currentHtml: htmlAtSubmission,
-          projectName: state.workspace.project?.name,
-        }),
-      });
-
-      dispatch({ type: "BUILD_STEP_CHANGED", step: "engineer" });
-      const raw = await response.text();
-      let payload: unknown;
+    if (!response.ok || !response.body) {
+      let body: unknown = null;
       try {
-        payload = JSON.parse(raw);
+        body = JSON.parse(await response.text());
       } catch {
-        throw { code: "PROVIDER_ERROR", message: "服务返回了无法读取的内容。请重试，当前版本已保留。" } satisfies AppError;
+        body = null;
       }
+      throw parseError(body);
+    }
 
-      if (!response.ok) throw parseError(payload);
-      await delay(160);
-      dispatch({ type: "BUILD_STEP_CHANGED", step: "reviewer" });
+    const parse = createStreamParser();
+    const decoder = new TextDecoder();
+    const reader = response.body.getReader();
+    const outcome: StreamOutcome = { plan: null, result: null, failure: null };
 
-      const parsed = generateResponseSchema.safeParse(payload);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const event of parse(decoder.decode(value, { stream: true }))) {
+        if (event.type === "stage") {
+          dispatch({ type: "BUILD_STEP_CHANGED", step: event.stage });
+        } else if (event.type === "plan") {
+          outcome.plan = event.plan;
+        } else if (event.type === "result") {
+          outcome.result = event.result;
+        } else {
+          outcome.failure = parseError({ error: event.error });
+        }
+      }
+    }
+
+    if (outcome.failure) throw outcome.failure;
+    return outcome;
+  }
+
+  function nextRevision() {
+    const project = state.workspace.project;
+    return (project?.pendingPlan?.revision ?? project?.approvedPlan?.revision ?? 0) + 1;
+  }
+
+  /** Phase one: ask for a specification instead of building straight away. */
+  async function runPlanRequest(prompt: string, note: string | undefined, revision: number) {
+    try {
+      const outcome = await postStream("/api/plan", { prompt, feedback: note, revision });
+      const parsed = planResponseSchema.safeParse(outcome.plan);
+      if (!parsed.success) {
+        throw { code: "OUTPUT_INVALID", message: "方案字段不完整，请重试。" } satisfies AppError;
+      }
+      dispatch({
+        type: "PLAN_READY",
+        plan: {
+          id: crypto.randomUUID(),
+          prompt,
+          revision,
+          createdAt: new Date().toISOString(),
+          ...parsed.data,
+        },
+      });
+    } catch (error) {
+      dispatch({ type: "BUILD_FAILED", error: toAppError(error) });
+    }
+  }
+
+  async function requestPlan(prompt: string, note?: string) {
+    if (busy) return;
+    dispatch({
+      type: "PLAN_REQUESTED",
+      prompt,
+      note,
+      buildId: crypto.randomUUID(),
+      now: new Date().toISOString(),
+    });
+    await runPlanRequest(prompt, note, nextRevision());
+  }
+
+  /** Phase two: build the approved specification. */
+  async function runBuild(prompt: string, plan: PlanSpec | undefined, buildId: string) {
+    try {
+      const outcome = await postStream("/api/generate", {
+        prompt,
+        currentHtml: currentVersion?.html,
+        plan,
+      });
+      const parsed = generateResponseSchema.safeParse(outcome.result);
       if (!parsed.success) {
         throw { code: "OUTPUT_INVALID", message: "生成结果字段不完整，旧版本已保留。" } satisfies AppError;
       }
@@ -104,8 +188,6 @@ export function WorkspaceShell({ initialMode }: { initialMode: "live" | "demo" }
       if (!validation.ok) {
         throw { code: "PREVIEW_REJECTED", message: `预览被安全检查拒绝：${validation.reason}。旧版本已保留。` } satisfies AppError;
       }
-
-      await delay(180);
       dispatch({
         type: "BUILD_SUCCEEDED",
         buildId,
@@ -119,12 +201,39 @@ export function WorkspaceShell({ initialMode }: { initialMode: "live" | "demo" }
         now: new Date().toISOString(),
       });
     } catch (error) {
-      const appError: AppError =
-        typeof error === "object" && error !== null && "code" in error && "message" in error
-          ? error as AppError
-          : { code: "PROVIDER_ERROR", message: "生成请求失败。请检查网络后重试，当前版本已保留。" };
-      dispatch({ type: "BUILD_FAILED", error: appError });
+      dispatch({ type: "BUILD_FAILED", error: toAppError(error) });
     }
+  }
+
+  async function submitPrompt(prompt: string) {
+    if (busy) return;
+    if (currentVersion) {
+      const buildId = crypto.randomUUID();
+      dispatch({ type: "PROMPT_SUBMITTED", prompt, buildId, now: new Date().toISOString() });
+      await runBuild(prompt, approvedPlan ? planSpec(approvedPlan) : undefined, buildId);
+      return;
+    }
+    await requestPlan(prompt);
+  }
+
+  async function approvePlan() {
+    if (!pendingPlan || busy) return;
+    const buildId = crypto.randomUUID();
+    dispatch({ type: "PLAN_APPROVED", buildId, now: new Date().toISOString() });
+    await runBuild(pendingPlan.prompt, planSpec(pendingPlan), buildId);
+  }
+
+  async function retryLastRequest() {
+    const failed = state.build;
+    if (!failed || failed.status !== "failed" || busy) return;
+    const buildId = crypto.randomUUID();
+    dispatch({ type: "BUILD_RETRIED", buildId, now: new Date().toISOString() });
+
+    if (failed.phase === "plan") {
+      await runPlanRequest(failed.prompt, undefined, nextRevision());
+      return;
+    }
+    await runBuild(failed.prompt, approvedPlan ? planSpec(approvedPlan) : undefined, buildId);
   }
 
   if (state.hydration === "loading") {
@@ -183,6 +292,16 @@ export function WorkspaceShell({ initialMode }: { initialMode: "live" | "demo" }
               </div>
             )}
             <ConversationPanel messages={project?.messages ?? []} onExample={submitPrompt} disabled={isBuilding} />
+            {pendingPlan && (
+              <PlanCard
+                plan={pendingPlan}
+                canRevise={mode === "live"}
+                busy={busy}
+                onApprove={approvePlan}
+                onRevise={(feedback) => requestPlan(pendingPlan.prompt, feedback)}
+                onDiscard={() => dispatch({ type: "PLAN_DISCARDED" })}
+              />
+            )}
             <AgentTimeline build={state.build} />
             <VersionHistory versions={project?.versions ?? []} currentVersionId={project?.currentVersionId ?? null} onSelect={(versionId) => {
               dispatch({ type: "VERSION_SELECTED", versionId, now: new Date().toISOString() });
@@ -191,9 +310,10 @@ export function WorkspaceShell({ initialMode }: { initialMode: "live" | "demo" }
 
           <PromptComposer
             isBuilding={isBuilding}
+            awaitsApproval={state.build?.status === "awaiting_approval"}
             hasVersion={Boolean(currentVersion)}
             onSubmit={submitPrompt}
-            onRetry={() => state.lastPrompt && submitPrompt(state.lastPrompt)}
+            onRetry={retryLastRequest}
             canRetry={state.build?.status === "failed" && Boolean(state.lastPrompt)}
           />
         </aside>
